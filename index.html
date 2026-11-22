@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluid Dynamics Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#080b12; --surface:#0f1420; --s2:#161c2e;
+  --border:rgba(99,179,237,0.1); --accent:#63b3ed;
+  --text:#e2ecf8; --dim:#4a6785; --r:10px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;gap:12px;flex-wrap:wrap;}
+.logo{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--accent);white-space:nowrap;}
+.logo span{color:var(--text);}
+.stats{display:flex;gap:16px;font-size:11px;}
+.stat{display:flex;flex-direction:column;align-items:center;}
+.sv{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--accent);}
+.sl{font-size:9px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;}
+
+.main{display:flex;flex:1;overflow:hidden;}
+
+.sidebar{width:240px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+.sidebar::-webkit-scrollbar{width:3px;}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);}
+
+.sec-title{font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;font-weight:600;margin-bottom:8px;}
+
+.ctrl{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;}
+.clbl{font-size:12px;color:var(--text);display:flex;justify-content:space-between;}
+.clbl span{font-family:'JetBrains Mono',monospace;color:var(--accent);}
+input[type=range]{width:100%;height:4px;background:var(--s2);border-radius:2px;appearance:none;cursor:pointer;}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);cursor:pointer;}
+
+.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.btn{padding:9px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;}
+.btn:hover{border-color:var(--accent);color:var(--accent);}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#000;}
+.btn.full{grid-column:1/-1;}
+.btn.danger{border-color:#fc8181;color:#fc8181;}
+.btn.danger:hover{background:rgba(252,129,129,0.1);}
+
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.mode-btn{padding:7px 4px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);color:var(--dim);font-family:'DM Sans',sans-serif;font-size:11px;cursor:pointer;transition:all 0.15s;text-align:center;}
+.mode-btn:hover{border-color:rgba(99,179,237,0.4);color:var(--text);}
+.mode-btn.on{border-color:var(--accent);background:rgba(99,179,237,0.1);color:var(--accent);}
+
+.legend{display:flex;height:12px;border-radius:4px;overflow:hidden;margin-top:6px;}
+.legend canvas{width:100%;height:100%;}
+
+.hint{font-size:11px;color:var(--dim);line-height:1.8;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:10px;}
+
+.canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:crosshair;}
+canvas#fluid{display:block;image-rendering:pixelated;}
+.overlay{position:absolute;bottom:12px;right:12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(99,179,237,0.6);pointer-events:none;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Fluid<span>Sim</span> — Lattice Boltzmann</div>
+  <div class="stats">
+    <div class="stat"><div class="sv" id="hFPS">0</div><div class="sl">FPS</div></div>
+    <div class="stat"><div class="sv" id="hStep">0</div><div class="sl">Steps</div></div>
+    <div class="stat"><div class="sv" id="hMax">0.00</div><div class="sl">Max vel</div></div>
+    <div class="stat"><div class="sv" id="hRe">0</div><div class="sl">Reynolds</div></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+
+    <div>
+      <div class="sec-title">Simulation</div>
+      <div class="ctrl">
+        <div class="clbl">Viscosity <span id="vVisc">0.10</span></div>
+        <input type="range" id="slVisc" min="1" max="50" value="10" oninput="updateVisc(this.value)">
+      </div>
+      <div class="ctrl">
+        <div class="clbl">Flow speed <span id="vSpeed">0.10</span></div>
+        <input type="range" id="slSpeed" min="1" max="30" value="10" oninput="updateSpeed(this.value)">
+      </div>
+      <div class="btn-grid">
+        <button class="btn on" id="btnRun" onclick="toggleRun()">⏸ Pause</button>
+        <button class="btn danger" onclick="resetSim()">Reset</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Draw Mode</div>
+      <div class="btn-grid">
+        <button class="btn on" id="dWall"   onclick="setDraw('wall')">🧱 Wall</button>
+        <button class="btn"    id="dErase"  onclick="setDraw('erase')">🧹 Erase</button>
+        <button class="btn"    id="dSource" onclick="setDraw('source')">💧 Source</button>
+        <button class="btn"    id="dSink"   onclick="setDraw('sink')">🌀 Sink</button>
+      </div>
+      <div class="ctrl" style="margin-top:8px">
+        <div class="clbl">Brush size <span id="vBrush">3</span></div>
+        <input type="range" id="slBrush" min="1" max="12" value="3" oninput="updateSlider('Brush',this.value)">
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Visualisation</div>
+      <div class="mode-grid">
+        <button class="mode-btn on" id="mVel"      onclick="setMode('velocity')">Velocity</button>
+        <button class="mode-btn"    id="mPres"     onclick="setMode('pressure')">Pressure</button>
+        <button class="mode-btn"    id="mVort"     onclick="setMode('vorticity')">Vorticity</button>
+        <button class="mode-btn"    id="mStream"   onclick="setMode('streamline')">Streamlines</button>
+      </div>
+      <div class="ctrl" style="margin-top:8px">
+        <div class="clbl">Contrast <span id="vContrast">5</span></div>
+        <input type="range" id="slContrast" min="1" max="20" value="5" oninput="updateSlider('Contrast',this.value)">
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Presets</div>
+      <div class="btn-grid">
+        <button class="btn full" onclick="loadPreset('cylinder')">⚪ Cylinder</button>
+        <button class="btn full" onclick="loadPreset('airfoil')">✈️ Aerofoil</button>
+        <button class="btn full" onclick="loadPreset('channel')">📐 Channel</button>
+        <button class="btn full" onclick="loadPreset('step')">📏 Backward step</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-title">Colour scale</div>
+      <canvas id="legendCanvas" height="12" style="width:100%;border-radius:4px;margin-top:2px;"></canvas>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:3px;font-family:'JetBrains Mono',monospace;">
+        <span>Low</span><span>High</span>
+      </div>
+    </div>
+
+    <div class="hint">
+      <strong>Draw</strong> walls to create obstacles.<br>
+      <strong>Left drag</strong> — draw<br>
+      <strong>Right drag</strong> — erase<br>
+      Watch fluid speed up around objects and form vortices!
+    </div>
+
+  </div>
+
+  <div class="canvas-wrap" id="wrap">
+    <canvas id="fluid"></canvas>
+    <div class="overlay" id="overlay">Step: 0</div>
+  </div>
+</div>
+
+<script>
+// ── LATTICE BOLTZMANN METHOD ───────────────────────────────────────
+// D2Q9 scheme — 9 velocity directions per cell
+
+const NX = 200, NY = 120; // grid size (will be scaled to canvas)
+
+// D2Q9 velocities and weights
+const EX = [0, 1, 0,-1, 0, 1,-1,-1, 1];
+const EY = [0, 0, 1, 0,-1, 1, 1,-1,-1];
+const W  = [4/9, 1/9, 1/9, 1/9, 1/9, 1/36, 1/36, 1/36, 1/36];
+const OPP = [0, 3, 4, 1, 2, 7, 8, 5, 6]; // opposite directions
+
+let f  = new Float32Array(NX * NY * 9); // distribution functions
+let f2 = new Float32Array(NX * NY * 9); // temp buffer
+let rho  = new Float32Array(NX * NY);   // density
+let ux   = new Float32Array(NX * NY);   // x velocity
+let uy   = new Float32Array(NX * NY);   // y velocity
+let wall = new Uint8Array(NX * NY);     // wall mask
+
+let omega = 1.0; // relaxation parameter (related to viscosity)
+let inletU = 0.10; // inlet velocity
+let running = true;
+let step = 0;
+let drawMode = 'wall';
+let visMode = 'velocity';
+let brushSize = 3;
+
+// Canvas
+const canvas = document.getElementById('fluid');
+const ctx = canvas.getContext('2d');
+let imgData, pixels;
+let scaleX, scaleY;
+
+// ── INIT ──────────────────────────────────────────────────────────
+function initSim() {
+  // Equilibrium initialisation with uniform flow
+  for (let y = 0; y < NY; y++) {
+    for (let x = 0; x < NX; x++) {
+      const i = idx(x, y);
+      const u = wall[i] ? 0 : inletU;
+      const r = 1.0;
+      rho[i] = r;
+      ux[i]  = u;
+      uy[i]  = 0;
+      for (let q = 0; q < 9; q++) {
+        f[i*9+q] = feq(q, r, u, 0);
+      }
+    }
+  }
+}
+
+function idx(x, y) { return y * NX + x; }
+
+function feq(q, r, ux, uy) {
+  const eu = EX[q]*ux + EY[q]*uy;
+  const u2 = ux*ux + uy*uy;
+  return W[q] * r * (1 + 3*eu + 4.5*eu*eu - 1.5*u2);
+}
+
+// ── LBM STEP ──────────────────────────────────────────────────────
+function lbmStep() {
+  // Collide + stream combined
+  for (let y = 0; y < NY; y++) {
+    for (let x = 0; x < NX; x++) {
+      const i = idx(x, y);
+
+      if (wall[i]) {
+        // Bounce-back for walls
+        for (let q = 0; q < 9; q++) {
+          const nx2 = x - EX[q], ny2 = y - EY[q];
+          if (nx2>=0&&nx2<NX&&ny2>=0&&ny2<NY) {
+            f2[idx(nx2,ny2)*9+OPP[q]] = f[i*9+q];
+          }
+        }
+        continue;
+      }
+
+      // Macroscopic quantities
+      let r = 0, uxx = 0, uyy = 0;
+      for (let q = 0; q < 9; q++) {
+        r   += f[i*9+q];
+        uxx += EX[q]*f[i*9+q];
+        uyy += EY[q]*f[i*9+q];
+      }
+      if (r < 1e-10) r = 1e-10;
+      uxx /= r; uyy /= r;
+
+      rho[i] = r;
+      ux[i]  = uxx;
+      uy[i]  = uyy;
+
+      // Collision (BGK)
+      for (let q = 0; q < 9; q++) {
+        const fPost = f[i*9+q] + omega * (feq(q, r, uxx, uyy) - f[i*9+q]);
+        // Stream
+        const nx2 = x + EX[q], ny2 = y + EY[q];
+        if (nx2>=0&&nx2<NX&&ny2>=0&&ny2<NY) {
+          f2[idx(nx2,ny2)*9+q] = fPost;
+        }
+      }
+    }
+  }
+
+  // Inlet BC (left): fixed velocity
+  for (let y = 0; y < NY; y++) {
+    const i = idx(0, y);
+    if (!wall[i]) {
+      rho[i] = 1.0; ux[i] = inletU; uy[i] = 0;
+      for (let q = 0; q < 9; q++) f2[i*9+q] = feq(q, 1, inletU, 0);
+    }
+  }
+
+  // Outlet BC (right): copy from neighbour
+  for (let y = 0; y < NY; y++) {
+    const i = idx(NX-1, y), i2 = idx(NX-2, y);
+    for (let q = 0; q < 9; q++) f2[i*9+q] = f2[i2*9+q];
+  }
+
+  // Top/bottom: free-slip (periodic-like)
+  for (let x = 0; x < NX; x++) {
+    for (let q = 0; q < 9; q++) {
+      f2[idx(x,0)*9+q]    = f2[idx(x,1)*9+q];
+      f2[idx(x,NY-1)*9+q] = f2[idx(x,NY-2)*9+q];
+    }
+  }
+
+  // Swap buffers
+  const tmp = f; f = f2; f2 = tmp;
+  step++;
+}
+
+// ── RENDERING ─────────────────────────────────────────────────────
+function colourmap(t, mode) {
+  // t in [0,1]
+  t = Math.max(0, Math.min(1, t));
+  if (mode === 'velocity') {
+    // Deep blue → cyan → white
+    if (t < 0.5) {
+      const s = t*2;
+      return [Math.round(s*99), Math.round(s*179), Math.round(200+s*55)];
+    } else {
+      const s = (t-0.5)*2;
+      return [Math.round(99+s*156), Math.round(179+s*76), Math.round(255)];
+    }
+  }
+  if (mode === 'pressure') {
+    // Blue → green → red
+    if (t < 0.5) {
+      const s = t*2;
+      return [Math.round(s*104), Math.round(s*211), Math.round(255*(1-s))];
+    } else {
+      const s = (t-0.5)*2;
+      return [Math.round(104+s*148), Math.round(211*(1-s*0.5)), Math.round(0)];
+    }
+  }
+  if (mode === 'vorticity') {
+    // Diverging: red(neg) → white → blue(pos)
+    if (t < 0.5) {
+      const s = t*2;
+      return [Math.round(200+s*55), Math.round(s*200), Math.round(s*255)];
+    } else {
+      const s = (t-0.5)*2;
+      return [Math.round(255*(1-s)), Math.round(200*(1-s)), 255];
+    }
+  }
+  return [200,200,200];
+}
+
+function render() {
+  const contrast = parseInt(document.getElementById('slContrast').value);
+  let maxVal = 0;
+
+  // Pre-compute field values
+  const field = new Float32Array(NX*NY);
+
+  if (visMode === 'velocity') {
+    for (let i=0; i<NX*NY; i++) {
+      field[i] = Math.sqrt(ux[i]*ux[i]+uy[i]*uy[i]);
+      if (field[i]>maxVal) maxVal=field[i];
+    }
+  } else if (visMode === 'pressure') {
+    let minP=Infinity, maxP=-Infinity;
+    for (let i=0; i<NX*NY; i++) { if(rho[i]<minP)minP=rho[i]; if(rho[i]>maxP)maxP=rho[i]; }
+    for (let i=0; i<NX*NY; i++) field[i]=(rho[i]-minP)/(maxP-minP+1e-10);
+    maxVal=1;
+  } else if (visMode === 'vorticity') {
+    for (let y=1; y<NY-1; y++) {
+      for (let x=1; x<NX-1; x++) {
+        const i=idx(x,y);
+        field[i]=0.5*(uy[idx(x+1,y)]-uy[idx(x-1,y)])
+                -0.5*(ux[idx(x,y+1)]-ux[idx(x,y-1)]);
+      }
+    }
+    for (let i=0; i<NX*NY; i++) if(Math.abs(field[i])>maxVal) maxVal=Math.abs(field[i]);
+  }
+
+  document.getElementById('hMax').textContent = maxVal.toFixed(3);
+
+  // Reynolds number estimate
+  const L = NY/4;
+  const nu = (1/omega - 0.5)/3;
+  const Re = Math.round(inletU*L/nu);
+  document.getElementById('hRe').textContent = Re;
+
+  // Draw pixels
+  for (let y=0; y<NY; y++) {
+    for (let x=0; x<NX; x++) {
+      const i=idx(x,y);
+      const pi=(y*NX+x)*4;
+
+      if (wall[i]) {
+        pixels[pi]=60; pixels[pi+1]=80; pixels[pi+2]=120; pixels[pi+3]=255;
+        continue;
+      }
+
+      let t;
+      if (visMode==='vorticity') {
+        t = 0.5 + (field[i]/(maxVal+1e-10))*0.5*contrast;
+      } else {
+        t = (field[i]/(maxVal+1e-10))*contrast;
+      }
+      const [r,g,b] = colourmap(t, visMode);
+      pixels[pi]=r; pixels[pi+1]=g; pixels[pi+2]=b; pixels[pi+3]=255;
+    }
+  }
+
+  // Streamlines overlay
+  if (visMode === 'streamline') {
+    // Fill with dark base
+    for (let i=0; i<NX*NY*4; i+=4) {
+      const ii=i/4;
+      if (!wall[ii]) {
+        pixels[i]=5; pixels[i+1]=10; pixels[i+2]=20; pixels[i+3]=255;
+      } else {
+        pixels[i]=60; pixels[i+1]=80; pixels[i+2]=120; pixels[i+3]=255;
+      }
+    }
+
+    // Draw streamlines by integration
+    for (let sy=2; sy<NY-2; sy+=6) {
+      for (let sx=2; sx<NX-2; sx+=12) {
+        let px=sx, py=sy;
+        for (let step2=0; step2<80; step2++) {
+          const xi=Math.round(px), yi=Math.round(py);
+          if (xi<0||xi>=NX||yi<0||yi>=NY) break;
+          const ii=idx(xi,yi);
+          if (wall[ii]) break;
+          const vx=ux[ii]*30, vy=uy[ii]*30;
+          const speed=Math.sqrt(vx*vx+vy*vy);
+          if (speed<0.01) break;
+          px+=vx/speed*1.5; py+=vy/speed*1.5;
+          if (px<0||px>=NX||py<0||py>=NY) break;
+          const pi2=(Math.round(py)*NX+Math.round(px))*4;
+          const t2=speed/(inletU*30+0.01);
+          const [r,g,b]=colourmap(t2,'velocity');
+          pixels[pi2]=r; pixels[pi2+1]=g; pixels[pi2+2]=b; pixels[pi2+3]=255;
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
+  // Scale to canvas
+  const wrap = document.getElementById('wrap');
+  canvas.style.width  = wrap.clientWidth  + 'px';
+  canvas.style.height = wrap.clientHeight + 'px';
+}
+
+function drawLegend() {
+  const lc = document.getElementById('legendCanvas');
+  const lctx = lc.getContext('2d');
+  lc.width = 200;
+  for (let x=0; x<200; x++) {
+    const [r,g,b] = colourmap(x/199, visMode==='streamline'?'velocity':visMode);
+    lctx.fillStyle = `rgb(${r},${g},${b})`;
+    lctx.fillRect(x,0,1,12);
+  }
+}
+
+// ── PRESETS ───────────────────────────────────────────────────────
+function loadPreset(name) {
+  wall.fill(0);
+  resetSim();
+
+  if (name === 'cylinder') {
+    const cx = Math.round(NX*0.35), cy = Math.round(NY*0.5), r = Math.round(NY*0.12);
+    for (let y=0; y<NY; y++) for (let x=0; x<NX; x++) {
+      if ((x-cx)**2+(y-cy)**2 < r*r) wall[idx(x,y)]=1;
+    }
+  }
+
+  if (name === 'airfoil') {
+    const cx=Math.round(NX*0.35), cy=Math.round(NY*0.5);
+    const chord=Math.round(NX*0.18), thick=Math.round(NY*0.06);
+    const aoa=0.12; // angle of attack
+    for (let y=0; y<NY; y++) for (let x=0; x<NX; x++) {
+      const dx=x-cx, dy=y-cy;
+      const lx=dx*Math.cos(aoa)+dy*Math.sin(aoa);
+      const ly=-dx*Math.sin(aoa)+dy*Math.cos(aoa);
+      if (lx>-chord/2&&lx<chord/2) {
+        const t2=thick*(1-(2*lx/chord)**2)*0.8;
+        if (Math.abs(ly)<t2) wall[idx(x,y)]=1;
+      }
+    }
+  }
+
+  if (name === 'channel') {
+    const gapY = Math.round(NY*0.3);
+    const wallH = Math.round((NY-gapY)/2);
+    for (let y=0; y<NY; y++) for (let x=Math.round(NX*0.3); x<Math.round(NX*0.32); x++) {
+      if (y<wallH || y>NY-wallH) wall[idx(x,y)]=1;
+    }
+  }
+
+  if (name === 'step') {
+    const stepH = Math.round(NY*0.4);
+    const stepX = Math.round(NX*0.35);
+    for (let y=NY-stepH; y<NY; y++) for (let x=0; x<stepX; x++) wall[idx(x,y)]=1;
+  }
+
+  initSim();
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────────
+function updateVisc(val) {
+  const nu = val/1000;
+  omega = 1/(3*nu + 0.5);
+  omega = Math.max(0.5001, Math.min(1.95, omega));
+  document.getElementById('vVisc').textContent = (val/100).toFixed(2);
+}
+
+function updateSpeed(val) {
+  inletU = val/100;
+  document.getElementById('vSpeed').textContent = inletU.toFixed(2);
+}
+
+function updateSlider(name, val) {
+  document.getElementById('v'+name).textContent = val;
+  if (name==='Brush') brushSize = parseInt(val);
+}
+
+function toggleRun() {
+  running = !running;
+  document.getElementById('btnRun').textContent = running ? '⏸ Pause' : '▶ Run';
+  document.getElementById('btnRun').classList.toggle('on', running);
+}
+
+function setDraw(mode) {
+  drawMode = mode;
+  ['Wall','Erase','Source','Sink'].forEach(m => {
+    document.getElementById('d'+m).classList.toggle('on', mode===m.toLowerCase());
+  });
+}
+
+function setMode(mode) {
+  visMode = mode;
+  ['Vel','Pres','Vort','Stream'].forEach((m,i)=>{
+    const ids=['mVel','mPres','mVort','mStream'];
+    document.getElementById(ids[i]).classList.toggle('on',mode===['velocity','pressure','vorticity','streamline'][i]);
+  });
+  drawLegend();
+}
+
+function resetSim() {
+  step = 0;
+  initSim();
+}
+
+// ── MOUSE DRAWING ─────────────────────────────────────────────────
+let painting = false;
+
+function getGridPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const bx = (e.clientX - rect.left) / rect.width;
+  const by = (e.clientY - rect.top)  / rect.height;
+  return { x: Math.round(bx * NX), y: Math.round(by * NY) };
+}
+
+function paintAt(e) {
+  const {x, y} = getGridPos(e);
+  const r = brushSize;
+  const erase = e.buttons === 2 || drawMode === 'erase';
+  for (let dy=-r; dy<=r; dy++) {
+    for (let dx=-r; dx<=r; dx++) {
+      if (dx*dx+dy*dy > r*r) continue;
+      const px=x+dx, py=y+dy;
+      if (px>=1&&px<NX-1&&py>=1&&py<NY-1) {
+        wall[idx(px,py)] = erase ? 0 : 1;
+        if (erase) { ux[idx(px,py)]=inletU; uy[idx(px,py)]=0; rho[idx(px,py)]=1; }
+      }
+    }
+  }
+}
+
+canvas.addEventListener('mousedown', e=>{ e.preventDefault(); painting=true; paintAt(e); });
+canvas.addEventListener('mousemove', e=>{ if(painting) paintAt(e); });
+canvas.addEventListener('mouseup',   ()=>painting=false);
+canvas.addEventListener('mouseleave',()=>painting=false);
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+
+// ── MAIN LOOP ─────────────────────────────────────────────────────
+let lastFPS=0, fpsCount=0, lastFPSTime=performance.now();
+
+function loop() {
+  if (running) {
+    const stepsPerFrame = 3;
+    for (let i=0; i<stepsPerFrame; i++) lbmStep();
+    render();
+    document.getElementById('hStep').textContent = step;
+    document.getElementById('overlay').textContent = `Step: ${step}`;
+  }
+
+  fpsCount++;
+  const now = performance.now();
+  if (now - lastFPSTime > 500) {
+    document.getElementById('hFPS').textContent = Math.round(fpsCount*1000/(now-lastFPSTime));
+    fpsCount=0; lastFPSTime=now;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+function setup() {
+  canvas.width  = NX;
+  canvas.height = NY;
+  imgData = ctx.createImageData(NX, NY);
+  pixels  = imgData.data;
+  updateVisc(document.getElementById('slVisc').value);
+  updateSpeed(document.getElementById('slSpeed').value);
+  loadPreset('cylinder');
+  drawLegend();
+  requestAnimationFrame(loop);
+}
+
+setup();
+</script>
+</body>
+</html>
